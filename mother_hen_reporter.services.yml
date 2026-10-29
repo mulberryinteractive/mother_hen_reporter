@@ -8,7 +8,9 @@ services:
 
   Drupal\mother_hen_reporter\ReporterSettings:
     arguments:
-      $keyRepository: '@key.repository'
+      # Optional, so a site upgrading from 1.x still boots and can run
+      # mother_hen_reporter_update_20001(), which installs Key.
+      $keyRepository: '@?key.repository'
   Drupal\mother_hen_reporter\InventoryCollector: {}
   Drupal\mother_hen_reporter\Reporter:
     arguments:

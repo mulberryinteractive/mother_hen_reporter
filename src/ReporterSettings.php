@@ -29,13 +29,16 @@ final class ReporterSettings {
 
   public function __construct(
     private readonly ConfigFactoryInterface $configFactory,
-    private readonly KeyRepositoryInterface $keyRepository,
+    private readonly ?KeyRepositoryInterface $keyRepository,
   ) {}
 
   /**
    * Returns why reporting is disabled, or NULL when it is enabled.
    */
   public function disabledReason(): ?string {
+    if ($this->keyRepository === NULL) {
+      return 'The Key module is not installed. Run database updates (drush updb).';
+    }
     if ($this->endpoint() === '' || $this->siteId() === '' || $this->keyId() === '') {
       return 'Not configured: set the dashboard endpoint, site ID and private key at Configuration > System > Mother Hen reporter.';
     }
@@ -127,7 +130,7 @@ final class ReporterSettings {
    * The configured Key entity.
    */
   private function key(): ?KeyInterface {
-    return $this->keyId() === '' ? NULL : $this->keyRepository->getKey($this->keyId());
+    return $this->keyId() === '' || $this->keyRepository === NULL ? NULL : $this->keyRepository->getKey($this->keyId());
   }
 
   /**

@@ -17,3 +17,14 @@ use Drupal\mother_hen_reporter\Hook\ReporterHooks;
 function mother_hen_reporter_requirements(string $phase): array {
   return $phase === 'runtime' ? \Drupal::service(ReporterHooks::class)->runtimeRequirements() : [];
 }
+
+/**
+ * Install the Key module and the default reporter settings (2.0).
+ */
+function mother_hen_reporter_update_20001(): string {
+  \Drupal::service('module_installer')->install(['key']);
+  if (\Drupal::config('mother_hen_reporter.settings')->isNew()) {
+    \Drupal::service('config.installer')->installDefaultConfig('module', 'mother_hen_reporter');
+  }
+  return 'Installed the Key module. Configure the reporter at Configuration > System > Mother Hen reporter.';
+}
