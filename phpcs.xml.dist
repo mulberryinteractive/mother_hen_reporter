@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="mother_hen_reporter">
+  <description>PHP CodeSniffer configuration for Mother Hen Reporter.</description>
+
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+
+  <!-- Keep the extensions in alphabetic order like Core. -->
+  <arg name="extensions" value="engine,inc,info,install,module,php,profile,test,theme,yml"/>
+</ruleset>

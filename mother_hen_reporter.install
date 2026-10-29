@@ -1,0 +1,19 @@
+<?php
+
+/**
+ * @file
+ * Requirements for Mother Hen Reporter on Drupal < 11.2.
+ */
+
+declare(strict_types=1);
+
+use Drupal\Core\Hook\Attribute\LegacyRequirementsHook;
+use Drupal\mother_hen_reporter\Hook\ReporterHooks;
+
+/**
+ * Implements hook_requirements().
+ */
+#[LegacyRequirementsHook]
+function mother_hen_reporter_requirements(string $phase): array {
+  return $phase === 'runtime' ? \Drupal::service(ReporterHooks::class)->runtimeRequirements() : [];
+}

@@ -1,0 +1,6 @@
+name: Mother Hen Reporter
+type: module
+description: 'Reports installed Drupal core, module and package versions to a Mother Hen security dashboard.'
+package: Mother Hen
+core_version_requirement: ^10.3 || ^11
+php: 8.1

@@ -1,0 +1,16 @@
+services:
+  _defaults:
+    autowire: true
+
+  logger.channel.mother_hen_reporter:
+    parent: logger.channel_base
+    arguments: ['mother_hen_reporter']
+
+  Drupal\mother_hen_reporter\ReporterSettings: {}
+  Drupal\mother_hen_reporter\InventoryCollector: {}
+  Drupal\mother_hen_reporter\Reporter:
+    arguments:
+      $logger: '@logger.channel.mother_hen_reporter'
+  # Registered explicitly so the procedural shims in the .module file can
+  # reach it on Drupal 10, where hook classes are not auto-registered.
+  Drupal\mother_hen_reporter\Hook\ReporterHooks: {}
