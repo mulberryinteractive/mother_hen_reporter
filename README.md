@@ -42,10 +42,10 @@ If a report fails, the next cron run retries it. The **Status report** page (`/a
 
 ## Installation
 
-The module is not on drupal.org. Add its Git repository to the site's `composer.json`. The URL below is a placeholder until the public repository exists.
+The module is not on drupal.org. Add its Git repository to the site's `composer.json`:
 
 ```sh
-composer config repositories.mother_hen_reporter vcs https://github.com/OWNER/mother_hen_reporter
+composer config repositories.mother_hen_reporter vcs https://github.com/mulberryinteractive/mother_hen_reporter
 composer require mulberryinteractive/mother_hen_reporter
 drush pm:install mother_hen_reporter
 ```
