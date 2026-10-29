@@ -6,6 +6,7 @@ namespace Drupal\Tests\mother_hen_reporter\Kernel;
 
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\mother_hen_reporter\Reporter;
+use Drupal\mother_hen_reporter\ReporterSettings;
 use Drupal\mother_hen_reporter\Signer;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
@@ -72,15 +73,10 @@ final class ReporterTest extends KernelTestBase {
     $stack = HandlerStack::create(new MockHandler($responses));
     $stack->push(Middleware::history($this->history));
     $this->container->set('http_client', new Client(['handler' => $stack]));
+    // Rebuild services so changed settings and the new client take effect.
+    $this->container->set(Reporter::class, NULL);
+    $this->container->set(ReporterSettings::class, NULL);
     return $this->container->get(Reporter::class);
-  }
-
-  /**
-   * Tests that an unconfigured site sends nothing.
-   */
-  public function testUnconfiguredSendsNothing(): void {
-    $this->assertNull($this->reporter()->maybeReport());
-    $this->assertSame([], $this->history);
   }
 
   /**
@@ -110,65 +106,40 @@ final class ReporterTest extends KernelTestBase {
   }
 
   /**
-   * Tests that an unchanged inventory is not re-sent within the heartbeat.
+   * Tests that reports are re-sent only when changed, due or failed.
    */
-  public function testSkipsUnchangedWithinHeartbeat(): void {
-    $this->configure();
-    $reporter = $this->reporter([new Response(202), new Response(202)]);
-
-    $this->assertNotNull($reporter->maybeReport());
-    $this->assertNull($reporter->maybeReport());
-    $this->assertCount(1, $this->history);
-    // A forced report always sends.
-    $this->assertTrue($reporter->report()->success);
-    $this->assertCount(2, $this->history);
-  }
-
-  /**
-   * Tests that a failed report is retried on the next run.
-   */
-  public function testRetriesAfterFailure(): void {
+  public function testResendsOnlyWhenNeeded(): void {
     $this->configure();
     $reporter = $this->reporter([
       new Response(401, [], '{"error":"Request signature is not valid."}'),
       new Response(202),
+      new Response(202),
     ]);
 
     $failed = $reporter->maybeReport();
-    $this->assertFalse($failed->success);
     $this->assertSame('Request signature is not valid.', $failed->message);
-    $this->assertSame(401, $reporter->status()['code']);
-    $this->assertTrue($reporter->maybeReport()->success);
+    $this->assertTrue($reporter->maybeReport()->success, 'A failed report is retried.');
+    $this->assertNull($reporter->maybeReport(), 'Unchanged within the heartbeat: not re-sent.');
+    $this->assertTrue($reporter->report()->success, 'A forced report always sends.');
+    $this->assertCount(3, $this->history);
   }
 
   /**
-   * Tests that non-production Upsun environments stay silent.
+   * Tests that nothing is sent unless configured, production and HTTPS.
    */
-  public function testNonProductionUpsunEnvironmentIsSilent(): void {
+  public function testSilentUnlessAllowed(): void {
+    $this->assertNull($this->reporter()->maybeReport(), 'Not configured.');
+
+    $this->configure(['endpoint' => 'http://dashboard.example/api/mother-hen/inventory']);
+    $this->assertNull($this->reporter()->maybeReport(), 'Plain HTTP.');
+
     $this->configure();
     putenv('PLATFORM_ENVIRONMENT_TYPE=development');
+    $this->assertNull($this->reporter()->maybeReport(), 'Upsun non-production environment.');
 
-    $this->assertNull($this->reporter()->maybeReport());
-    $this->assertSame([], $this->history);
-  }
-
-  /**
-   * Tests that production Upsun environments report.
-   */
-  public function testProductionUpsunEnvironmentReports(): void {
-    $this->configure();
     putenv('PLATFORM_ENVIRONMENT_TYPE=production');
-
-    $this->assertTrue($this->reporter([new Response(202)])->maybeReport()->success);
-  }
-
-  /**
-   * Tests that a plain HTTP endpoint is refused unless explicitly allowed.
-   */
-  public function testRequiresHttps(): void {
-    $this->configure(['endpoint' => 'http://dashboard.example/api/mother-hen/inventory']);
-    $this->assertNull($this->reporter()->maybeReport());
-    $this->assertSame([], $this->history);
+    $this->assertTrue($this->reporter([new Response(202)])->maybeReport()->success, 'Upsun production reports.');
+    $this->assertCount(1, $this->history);
   }
 
 }

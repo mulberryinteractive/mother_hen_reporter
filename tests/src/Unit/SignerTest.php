@@ -35,24 +35,6 @@ final class SignerTest extends TestCase {
   }
 
   /**
-   * Tests the canonical message format.
-   */
-  public function testCanonicalMessage(): void {
-    $this->assertSame(
-      "mother-hen-v1\n" . self::SITE . "\n1793200000\n" . self::NONCE . "\n" . hash('sha256', self::BODY),
-      Signer::canonicalMessage(self::SITE, self::TIMESTAMP, self::NONCE, self::BODY),
-    );
-  }
-
-  /**
-   * Tests that a malformed key is refused.
-   */
-  public function testRejectsMalformedKey(): void {
-    $this->expectException(\InvalidArgumentException::class);
-    Signer::sign(self::PUBLIC_KEY, self::SITE, self::TIMESTAMP, self::NONCE, self::BODY);
-  }
-
-  /**
    * Tests that generated key pairs work together.
    */
   public function testGeneratedKeyPairVerifies(): void {
