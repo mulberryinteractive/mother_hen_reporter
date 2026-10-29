@@ -14,7 +14,9 @@ use Drupal\Core\Site\Settings;
  *   'endpoint' => 'https://dashboard.example.com/api/mother-hen/inventory',
  *   'site_id' => getenv('MOTHER_HEN_SITE_ID'),
  *   'private_key' => getenv('MOTHER_HEN_PRIVATE_KEY'),
- *   // Optional; must match the site's environment name on the dashboard.
+ *   // Optional. Defaults to the Upsun/Platform.sh branch name, otherwise
+ *   // "production". The dashboard keeps reports only from environments it
+ *   // monitors for the site.
  *   'environment' => 'production',
  * ];
  * @endcode
@@ -34,10 +36,6 @@ final class ReporterSettings {
     $settings = $this->all();
     if (empty($settings['endpoint']) || empty($settings['site_id']) || empty($settings['private_key'])) {
       return 'Not configured: endpoint, site_id and private_key are required in $settings[\'mother_hen_reporter\'].';
-    }
-    $type = getenv('PLATFORM_ENVIRONMENT_TYPE');
-    if ($type !== FALSE && $type !== 'production') {
-      return sprintf('This is a Platform.sh/Upsun "%s" environment; only production reports.', $type);
     }
     if (!str_starts_with((string) $settings['endpoint'], 'https://') && empty($settings['allow_insecure_endpoint'])) {
       return 'The endpoint must use HTTPS.';
@@ -68,9 +66,16 @@ final class ReporterSettings {
 
   /**
    * The environment name reported to the dashboard.
+   *
+   * On Upsun and Platform.sh each environment is named after its branch.
    */
   public function environment(): string {
-    return (string) ($this->all()['environment'] ?? 'production');
+    $configured = $this->all()['environment'] ?? NULL;
+    if (is_string($configured) && $configured !== '') {
+      return $configured;
+    }
+    $branch = getenv('PLATFORM_BRANCH');
+    return is_string($branch) && $branch !== '' ? $branch : 'production';
   }
 
   /**

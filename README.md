@@ -23,7 +23,11 @@ The module never sends content, users, configuration, credentials or file paths.
 
 - During cron, if the inventory has changed since the last accepted report, or if an hour has passed since then.
 - Only when the module is configured (see below).
-- Only from production. On Platform.sh/Upsun the module stays silent unless `PLATFORM_ENVIRONMENT_TYPE` is `production`, so preview and staging environments never overwrite production's report.
+- From any environment that has the settings. Each report names its environment:
+  - on Upsun or Platform.sh, the environment's branch name (`PLATFORM_BRANCH`);
+  - elsewhere, the `environment` setting, which defaults to `production`.
+
+  Each environment is stored separately. The dashboard keeps reports only from the environments monitored for that site (its production environment plus any others listed, wildcards allowed). It lists other environments that report, so you can add them.
 - Only over HTTPS.
 
 If a report fails, the next cron run retries it. The **Status report** page (`/admin/reports/status`) shows the last result.
@@ -69,18 +73,23 @@ Each site should have its own key pair.
 
 ### 3. Store the secrets on production
 
-**Platform.sh / Upsun.** Create environment-level variables on the production environment, here `main`. Make them sensitive, and set them not to be inherited, so that child and preview environments never receive them.
+**Platform.sh / Upsun.** Create environment-level variables on the production environment, here `main`, and make the private key sensitive. Whether they are inherited decides which environments can report:
+
+- `--inheritable true`: child environments, such as staging and previews, inherit them and report too. The dashboard keeps only the environments you monitor.
+- `--inheritable false`: only production reports.
 
 ```sh
 upsun variable:create -l environment -e main --prefix env: --name MOTHER_HEN_SITE_ID \
-  --value 'SITE-ID-FROM-DASHBOARD' --inheritable false
+  --value 'SITE-ID-FROM-DASHBOARD' --inheritable true
 upsun variable:create -l environment -e main --prefix env: --name MOTHER_HEN_PRIVATE_KEY \
-  --value 'PRIVATE-KEY-FROM-KEYGEN' --sensitive true --inheritable false
+  --value 'PRIVATE-KEY-FROM-KEYGEN' --sensitive true --inheritable true
 ```
+
+Every environment that receives the private key can sign reports for this site. Only let it reach environments built from branches your team controls.
 
 Older Platform.sh projects use the `platform` CLI instead of `upsun`. Check `platform variable:create --help` for its flags.
 
-**AWS and other hosts.** Provide `MOTHER_HEN_SITE_ID` and `MOTHER_HEN_PRIVATE_KEY` to PHP as environment variables on production only, using whatever secret mechanism the host provides.
+**AWS and other hosts.** Provide `MOTHER_HEN_SITE_ID` and `MOTHER_HEN_PRIVATE_KEY` to PHP as environment variables on each environment that should report, using whatever secret mechanism the host provides. Set `environment` in `settings.php` for each environment, for example from another environment variable.
 
 ### 4. Configure `settings.php`
 
@@ -89,13 +98,14 @@ $settings['mother_hen_reporter'] = [
   'endpoint' => 'https://YOUR-DASHBOARD/api/mother-hen/inventory',
   'site_id' => getenv('MOTHER_HEN_SITE_ID') ?: NULL,
   'private_key' => getenv('MOTHER_HEN_PRIVATE_KEY') ?: NULL,
-  // Optional. Must match the site's "Production environment name" on the
-  // dashboard. Defaults to 'production'.
-  // 'environment' => 'production',
+  // Optional. Defaults to the Upsun/Platform.sh branch name, otherwise
+  // 'production'. Must be the site's production environment, or another
+  // environment monitored for the site, on the dashboard.
+  // 'environment' => getenv('APP_ENV') ?: 'production',
 ];
 ```
 
-When the variables are absent, as on local, staging and preview environments, the module does nothing.
+When the variables are absent, as on local development sites, the module does nothing.
 
 ### 5. Check it works
 
@@ -129,8 +139,9 @@ Reports signed with the old key are refused once the dashboard has the new publi
   - bad signatures;
   - timestamps more than 5 minutes off;
   - reused nonces;
-  - bodies over 2 MB;
-  - reports naming an environment other than the site's production environment.
+  - bodies over 2 MB.
+
+  Valid reports from environments the site does not monitor are accepted but discarded.
 - **The dashboard stores only public keys.** A leak of the dashboard's database cannot be used to forge reports.
 - **Reports are as accurate as installed versions.** A module patched without changing its version still reports the original version. composer-patches 2.x users get `patches.lock.json` included, so patched packages are visible.
 

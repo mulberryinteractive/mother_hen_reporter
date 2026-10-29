@@ -44,14 +44,14 @@ final class ReporterTest extends KernelTestBase {
   protected function setUp(): void {
     parent::setUp();
     $this->keys = Signer::generateKeyPair();
-    putenv('PLATFORM_ENVIRONMENT_TYPE');
+    putenv('PLATFORM_BRANCH');
   }
 
   /**
    * {@inheritdoc}
    */
   protected function tearDown(): void {
-    putenv('PLATFORM_ENVIRONMENT_TYPE');
+    putenv('PLATFORM_BRANCH');
     parent::tearDown();
   }
 
@@ -125,21 +125,29 @@ final class ReporterTest extends KernelTestBase {
   }
 
   /**
-   * Tests that nothing is sent unless configured, production and HTTPS.
+   * Tests that nothing is sent unless configured and over HTTPS.
    */
-  public function testSilentUnlessAllowed(): void {
+  public function testSilentUnlessConfigured(): void {
     $this->assertNull($this->reporter()->maybeReport(), 'Not configured.');
 
     $this->configure(['endpoint' => 'http://dashboard.example/api/mother-hen/inventory']);
     $this->assertNull($this->reporter()->maybeReport(), 'Plain HTTP.');
+    $this->assertSame([], $this->history);
+  }
 
+  /**
+   * Tests that any environment reports, named after its Upsun branch.
+   */
+  public function testReportsEnvironmentName(): void {
     $this->configure();
-    putenv('PLATFORM_ENVIRONMENT_TYPE=development');
-    $this->assertNull($this->reporter()->maybeReport(), 'Upsun non-production environment.');
+    putenv('PLATFORM_BRANCH=staging');
+    $this->assertTrue($this->reporter([new Response(202)])->maybeReport()->success);
+    $this->assertSame('staging', json_decode((string) $this->history[0]['request']->getBody(), TRUE)['environment']);
 
-    putenv('PLATFORM_ENVIRONMENT_TYPE=production');
-    $this->assertTrue($this->reporter([new Response(202)])->maybeReport()->success, 'Upsun production reports.');
-    $this->assertCount(1, $this->history);
+    // An explicit setting wins.
+    $this->configure(['environment' => 'live']);
+    $this->assertTrue($this->reporter([new Response(202)])->report()->success);
+    $this->assertSame('live', json_decode((string) end($this->history)['request']->getBody(), TRUE)['environment']);
   }
 
 }
