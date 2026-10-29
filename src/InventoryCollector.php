@@ -26,7 +26,7 @@ final class InventoryCollector {
   /**
    * Reporter version included in each payload.
    */
-  public const REPORTER_VERSION = '1.0.0-dev';
+  public const REPORTER_VERSION = '2.0.0';
 
   public function __construct(
     private readonly ReporterSettings $settings,

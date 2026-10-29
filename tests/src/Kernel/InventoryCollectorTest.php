@@ -20,17 +20,18 @@ final class InventoryCollectorTest extends KernelTestBase {
   /**
    * {@inheritdoc}
    */
-  protected static $modules = ['mother_hen_reporter', 'system'];
+  protected static $modules = ['mother_hen_reporter', 'key', 'system'];
 
   /**
    * {@inheritdoc}
    */
   protected function setUp(): void {
     parent::setUp();
-    $this->setSetting('mother_hen_reporter', [
-      'site_id' => '6f1c2b9e-3d4a-4c5b-8e7f-0a1b2c3d4e5f',
-      'environment' => 'live',
-    ]);
+    $this->installConfig(['mother_hen_reporter']);
+    $this->config('mother_hen_reporter.settings')
+      ->set('site_id', '6f1c2b9e-3d4a-4c5b-8e7f-0a1b2c3d4e5f')
+      ->set('environment', 'live')
+      ->save();
   }
 
   /**

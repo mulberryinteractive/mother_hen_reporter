@@ -1,0 +1,4 @@
+administer mother hen reporter:
+  title: 'Administer the Mother Hen reporter'
+  description: 'Choose the dashboard, site ID and private key used to report this site.'
+  restrict access: true

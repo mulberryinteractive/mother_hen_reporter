@@ -1,0 +1,19 @@
+mother_hen_reporter.settings:
+  type: config_object
+  label: 'Mother Hen reporter settings'
+  mapping:
+    endpoint:
+      type: uri
+      label: 'Dashboard endpoint'
+    site_id:
+      type: string
+      label: 'Site ID'
+    private_key:
+      type: string
+      label: 'Private key (Key entity ID)'
+    environment:
+      type: string
+      label: 'Environment name override'
+    allow_insecure_endpoint:
+      type: boolean
+      label: 'Allow a plain HTTP endpoint (development only)'

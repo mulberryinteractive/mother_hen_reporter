@@ -1,0 +1,5 @@
+endpoint: ''
+site_id: ''
+private_key: ''
+environment: ''
+allow_insecure_endpoint: false

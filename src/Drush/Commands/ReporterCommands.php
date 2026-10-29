@@ -37,17 +37,12 @@ final class ReporterCommands extends DrushCommands {
       '',
       '  ' . $keys['public'],
       '',
-      'Private key (store as a secret environment variable, production only; never commit it):',
+      'Private key (store as a secret environment variable on the environments that report; never commit it):',
       '',
       '  MOTHER_HEN_PRIVATE_KEY=' . $keys['secret'],
       '',
-      'settings.php:',
-      '',
-      "  \$settings['mother_hen_reporter'] = [",
-      "    'endpoint' => 'https://YOUR-DASHBOARD/api/mother-hen/inventory',",
-      "    'site_id' => getenv('MOTHER_HEN_SITE_ID'),",
-      "    'private_key' => getenv('MOTHER_HEN_PRIVATE_KEY'),",
-      "  ];",
+      'Then, at Configuration > System > Mother Hen reporter, choose a Key that reads',
+      'the MOTHER_HEN_PRIVATE_KEY environment variable (Key module "Environment" provider).',
     ]);
   }
 

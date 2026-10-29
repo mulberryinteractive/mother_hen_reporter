@@ -22,10 +22,9 @@ The module never sends content, users, configuration, credentials or file paths.
 ## When reports are sent
 
 - During cron, if the inventory has changed since the last accepted report, or if an hour has passed since then.
-- Only when the module is configured (see below).
-- From any environment that has the settings. Each report names its environment:
+- From any environment where the private key has a value. Each report names its environment:
   - on Upsun or Platform.sh, the environment's branch name (`PLATFORM_BRANCH`);
-  - elsewhere, the `environment` setting, which defaults to `production`.
+  - elsewhere, the **Environment name** setting, which defaults to `production`.
 
   Each environment is stored separately. The dashboard keeps reports only from the environments monitored for that site (its production environment plus any others listed, wildcards allowed). It lists other environments that report, so you can add them.
 - Only over HTTPS.
@@ -35,93 +34,113 @@ If a report fails, the next cron run retries it. The **Status report** page (`/a
 ## Requirements
 
 - Drupal 10.3 or later, or Drupal 11.
+- The [Key](https://www.drupal.org/project/key) module, installed automatically by Composer.
 - PHP 8.1 or later with the `sodium` extension, which is bundled with PHP by default.
 - Composer 2.
 - Cron running at least daily. The dashboard flags a site as stale once its last report is older than that site's threshold, which defaults to 26 hours.
 - Outbound HTTPS from the site to the dashboard.
 
-## Installation
+## Setting up a site
 
-The module is not on drupal.org. Add its Git repository to the site's `composer.json`:
+Do steps 1–4 locally and commit the result. Then deploy, and give production the private key.
+
+### 1. Install the module
 
 ```sh
 composer config repositories.mother_hen_reporter vcs https://github.com/mulberryinteractive/mother_hen_reporter
-composer require mulberryinteractive/mother_hen_reporter
+composer require 'mulberryinteractive/mother_hen_reporter:^2.0'
 drush pm:install mother_hen_reporter
 ```
 
-## Setup
-
-### 1. Add the site to the dashboard
-
-On the dashboard, open **Sites → Add site**, then save. Copy the **site ID** from the sites list.
-
 ### 2. Generate a key pair
-
-Run this anywhere the module is installed, for example a local copy of the site:
 
 ```sh
 drush mother-hen:keygen
 ```
 
-It prints a **public key** and a **private key**.
+It prints a public key and a private key. Each site gets its own pair.
 
-- Paste the public key into the site's **Reporter public key** field on the dashboard.
-- Store the private key as a secret on the production environment only, as in the next step. Never commit it and never put it in configuration.
+- **Private key:** keep it for step 6. Never commit it or put it in configuration.
+- **Public key:** you need it in step 3. It is also shown on the settings form once the key is configured.
 
-Each site should have its own key pair.
+### 3. Add the site to the dashboard
 
-### 3. Store the secrets on production
+On the dashboard, open **Sites → Add a site**:
 
-**Platform.sh / Upsun.** Create environment-level variables on the production environment, here `main`, and make the private key sensitive. Whether they are inherited decides which environments can report:
+- Enter the production environment name. On Upsun this is the production branch, usually `main`.
+- List any other environments that should report.
+- Paste the public key.
 
-- `--inheritable true`: child environments, such as staging and previews, inherit them and report too. The dashboard keeps only the environments you monitor.
-- `--inheritable false`: only production reports.
+Then save, and copy the site's **Site ID** from the Sites list.
+
+### 4. Configure the reporter
+
+1. **Create a key.** At **Configuration → System → Keys → Add key**:
+   - Key type: *Authentication*.
+   - Key provider: *Environment*.
+   - Environment variable: `MOTHER_HEN_PRIVATE_KEY`.
+
+   The secret then stays out of configuration and the database. The settings form warns if you choose a key stored anywhere else.
+2. **Fill in the settings form.** At **Configuration → System → Mother Hen reporter**:
+   - **Dashboard endpoint:** `https://YOUR-DASHBOARD/api/mother-hen/inventory`.
+   - **Site ID:** from step 3.
+   - **Private key:** the key you just created.
+3. **Export and commit the configuration:**
+   - `drush cex`
+   - Commit `config/sync`, `composer.json` and `composer.lock`.
+
+None of this configuration is secret. It is the same in every environment, and only environments where the key has a value send reports.
+
+### 5. Deploy
+
+Deploy as usual. The configuration import enables the module. It stays silent until step 6.
+
+### 6. Give production the private key
+
+**Upsun / Platform.sh.** Create a sensitive environment variable on the production environment, here `main`:
 
 ```sh
-upsun variable:create -l environment -e main --prefix env: --name MOTHER_HEN_SITE_ID \
-  --value 'SITE-ID-FROM-DASHBOARD' --inheritable true
-upsun variable:create -l environment -e main --prefix env: --name MOTHER_HEN_PRIVATE_KEY \
-  --value 'PRIVATE-KEY-FROM-KEYGEN' --sensitive true --inheritable true
+upsun variable:create -p PROJECT -l environment -e main --prefix env: --name MOTHER_HEN_PRIVATE_KEY \
+  --value 'PRIVATE-KEY-FROM-STEP-2' --sensitive true --inheritable false
 ```
 
-Every environment that receives the private key can sign reports for this site. Only let it reach environments built from branches your team controls.
+`--inheritable false` means only production reports. With `--inheritable true`, child environments such as staging and previews inherit the key and report too; the dashboard keeps only the environments you monitor. Every environment holding the private key can sign reports for the site, so only let it reach environments built from branches your team controls.
 
-Older Platform.sh projects use the `platform` CLI instead of `upsun`. Check `platform variable:create --help` for its flags.
+Older Platform.sh projects use the `platform` CLI, with the same flags.
 
-**AWS and other hosts.** Provide `MOTHER_HEN_SITE_ID` and `MOTHER_HEN_PRIVATE_KEY` to PHP as environment variables on each environment that should report, using whatever secret mechanism the host provides. Set `environment` in `settings.php` for each environment, for example from another environment variable.
+**AWS and other hosts.** Provide `MOTHER_HEN_PRIVATE_KEY` to PHP as an environment variable on each environment that should report. Set **Environment name** on the settings form (or in `settings.php`, see below) if the default `production` is not right.
 
-### 4. Configure `settings.php`
-
-```php
-$settings['mother_hen_reporter'] = [
-  'endpoint' => 'https://YOUR-DASHBOARD/api/mother-hen/inventory',
-  'site_id' => getenv('MOTHER_HEN_SITE_ID') ?: NULL,
-  'private_key' => getenv('MOTHER_HEN_PRIVATE_KEY') ?: NULL,
-  // Optional. Defaults to the Upsun/Platform.sh branch name, otherwise
-  // 'production'. Must be the site's production environment, or another
-  // environment monitored for the site, on the dashboard.
-  // 'environment' => getenv('APP_ENV') ?: 'production',
-];
-```
-
-When the variables are absent, as on local development sites, the module does nothing.
-
-### 5. Check it works
-
-On production:
+Then send a first report from production:
 
 ```sh
 drush mother-hen:report     # Sends a report now and prints the result.
 ```
 
-Then check **Status report → Mother Hen reporter** on the site, and the site's **Last report** time on the dashboard.
+Check **Status report → Mother Hen reporter** on the site, and the site's **Last report** time on the dashboard.
+
+### Overriding settings in settings.php
+
+Any setting can be overridden per environment with Drupal's standard configuration overrides:
+
+```php
+$config['mother_hen_reporter.settings']['environment'] = getenv('APP_ENV') ?: 'production';
+$config['mother_hen_reporter.settings']['endpoint'] = 'https://other-dashboard.example/api/mother-hen/inventory';
+```
+
+### Upgrading from 1.x
+
+Version 1 read `$settings['mother_hen_reporter']` from `settings.php`. Version 2 ignores that block, and the status report warns while it is still there.
+
+1. Require `^2.0`.
+2. Create the key and fill in the settings form as in step 4. The existing `MOTHER_HEN_PRIVATE_KEY` variable keeps working.
+3. Export the configuration and remove the old block from `settings.php`.
+4. `MOTHER_HEN_SITE_ID` is no longer needed; the site ID is now configuration.
 
 ## Drush commands
 
 | Command | Purpose |
 |---|---|
-| `mother-hen:keygen` | Generate a key pair and print the settings to add |
+| `mother-hen:keygen` | Generate a key pair for a new site |
 | `mother-hen:payload` | Print the JSON payload that would be sent |
 | `mother-hen:report` | Send a report now, ignoring the schedule |
 
@@ -129,7 +148,7 @@ Then check **Status report → Mother Hen reporter** on the site, and the site's
 
 1. Run `drush mother-hen:keygen`.
 2. Paste the new public key into the dashboard.
-3. Replace the `MOTHER_HEN_PRIVATE_KEY` secret on production.
+3. Replace the `MOTHER_HEN_PRIVATE_KEY` secret wherever it is set.
 
 Reports signed with the old key are refused once the dashboard has the new public key, so update both sides together.
 
@@ -180,17 +199,12 @@ ddev phpunit           # Run the tests.
 ddev phpcs             # Check coding standards.
 ```
 
-To test against a local dashboard, install a site with `ddev drush site:install minimal -y`, enable the module, and configure it in `web/sites/default/settings.php`. The dashboard's DDEV web container is reachable at `http://ddev-mother-hen-web`, so plain HTTP must be allowed explicitly:
+To test against a local dashboard:
 
-```php
-$settings['mother_hen_reporter'] = [
-  'endpoint' => 'http://ddev-mother-hen-web/api/mother-hen/inventory',
-  'site_id' => '…',
-  'private_key' => '…',
-  // Development only.
-  'allow_insecure_endpoint' => TRUE,
-];
-```
+1. Install a site with `ddev drush site:install minimal -y` and enable the module.
+2. Configure it at **Configuration → System → Mother Hen reporter**, with a key using the *Configuration* provider. That is acceptable for local testing only, and the form warns about it.
+3. Point it at the dashboard's DDEV web container, `http://ddev-mother-hen-web/api/mother-hen/inventory`.
+4. Tick **Development → Allow a plain HTTP endpoint**.
 
 Test with Drupal 10 by running `ddev core-version '~10.3.0'`, then `ddev poser`.
 

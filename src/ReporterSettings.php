@@ -4,41 +4,50 @@ declare(strict_types=1);
 
 namespace Drupal\mother_hen_reporter;
 
+use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\Config\ImmutableConfig;
 use Drupal\Core\Site\Settings;
+use Drupal\key\KeyInterface;
+use Drupal\key\KeyRepositoryInterface;
 
 /**
- * Reads reporter settings from settings.php.
+ * The reporter's settings: config, with the private key held by Key.
  *
- * @code
- * $settings['mother_hen_reporter'] = [
- *   'endpoint' => 'https://dashboard.example.com/api/mother-hen/inventory',
- *   'site_id' => getenv('MOTHER_HEN_SITE_ID'),
- *   'private_key' => getenv('MOTHER_HEN_PRIVATE_KEY'),
- *   // Optional. Defaults to the Upsun/Platform.sh branch name, otherwise
- *   // "production". The dashboard keeps reports only from environments it
- *   // monitors for the site.
- *   'environment' => 'production',
- * ];
- * @endcode
+ * Configure at Configuration > System > Mother Hen reporter. Override in
+ * settings.php with $config['mother_hen_reporter.settings'][...] if needed.
  *
- * Secrets are deliberately not stored in configuration or the database.
+ * The private key is a Key entity, so it can come from an environment
+ * variable (recommended) rather than configuration or the database. Where
+ * the key has no value, e.g. on staging or local copies, nothing is sent.
  */
 final class ReporterSettings {
 
+  /**
+   * Key providers that keep the value in configuration or the database.
+   */
+  private const UNSAFE_PROVIDERS = ['config', 'state'];
+
   public function __construct(
-    private readonly Settings $settings,
+    private readonly ConfigFactoryInterface $configFactory,
+    private readonly KeyRepositoryInterface $keyRepository,
   ) {}
 
   /**
    * Returns why reporting is disabled, or NULL when it is enabled.
    */
   public function disabledReason(): ?string {
-    $settings = $this->all();
-    if (empty($settings['endpoint']) || empty($settings['site_id']) || empty($settings['private_key'])) {
-      return 'Not configured: endpoint, site_id and private_key are required in $settings[\'mother_hen_reporter\'].';
+    if ($this->endpoint() === '' || $this->siteId() === '' || $this->keyId() === '') {
+      return 'Not configured: set the dashboard endpoint, site ID and private key at Configuration > System > Mother Hen reporter.';
     }
-    if (!str_starts_with((string) $settings['endpoint'], 'https://') && empty($settings['allow_insecure_endpoint'])) {
+    if (!str_starts_with($this->endpoint(), 'https://') && !$this->config()->get('allow_insecure_endpoint')) {
       return 'The endpoint must use HTTPS.';
+    }
+    $key = $this->key();
+    if ($key === NULL) {
+      return sprintf('The private key "%s" does not exist.', $this->keyId());
+    }
+    if ($this->privateKey() === '') {
+      return sprintf('The private key "%s" has no value in this environment, so this environment does not report.', $key->label());
     }
     return NULL;
   }
@@ -47,21 +56,43 @@ final class ReporterSettings {
    * The dashboard endpoint URL.
    */
   public function endpoint(): string {
-    return (string) ($this->all()['endpoint'] ?? '');
+    return trim((string) $this->config()->get('endpoint'));
   }
 
   /**
    * The site UUID assigned by the dashboard.
    */
   public function siteId(): string {
-    return (string) ($this->all()['site_id'] ?? '');
+    return trim((string) $this->config()->get('site_id'));
   }
 
   /**
-   * The base64 Ed25519 secret key.
+   * The base64 Ed25519 secret key, or '' when it has no value here.
    */
   public function privateKey(): string {
-    return (string) ($this->all()['private_key'] ?? '');
+    return trim((string) $this->key()?->getKeyValue());
+  }
+
+  /**
+   * The public key matching the private key, for pasting into the dashboard.
+   */
+  public function publicKey(): ?string {
+    $secret = base64_decode($this->privateKey(), TRUE);
+    if ($secret === FALSE || strlen($secret) !== SODIUM_CRYPTO_SIGN_SECRETKEYBYTES) {
+      return NULL;
+    }
+    return base64_encode(sodium_crypto_sign_publickey_from_secretkey($secret));
+  }
+
+  /**
+   * Warns when the private key is stored in configuration or the database.
+   */
+  public function keyStorageWarning(): ?string {
+    $key = $this->key();
+    if ($key === NULL || !in_array($key->getKeyProvider()->getPluginId(), self::UNSAFE_PROVIDERS, TRUE)) {
+      return NULL;
+    }
+    return sprintf('The key "%s" is stored in configuration or the database, which usually ends up in Git or backups. Use the Environment or File provider instead.', $key->label());
   }
 
   /**
@@ -70,8 +101,8 @@ final class ReporterSettings {
    * On Upsun and Platform.sh each environment is named after its branch.
    */
   public function environment(): string {
-    $configured = $this->all()['environment'] ?? NULL;
-    if (is_string($configured) && $configured !== '') {
+    $configured = trim((string) $this->config()->get('environment'));
+    if ($configured !== '') {
       return $configured;
     }
     $branch = getenv('PLATFORM_BRANCH');
@@ -79,11 +110,31 @@ final class ReporterSettings {
   }
 
   /**
-   * Returns the raw settings array.
+   * Whether settings.php still has the 1.x $settings['mother_hen_reporter'].
    */
-  private function all(): array {
-    $settings = $this->settings->get('mother_hen_reporter', []);
-    return is_array($settings) ? $settings : [];
+  public function hasLegacySettings(): bool {
+    return Settings::get('mother_hen_reporter') !== NULL;
+  }
+
+  /**
+   * The configured Key entity ID.
+   */
+  private function keyId(): string {
+    return trim((string) $this->config()->get('private_key'));
+  }
+
+  /**
+   * The configured Key entity.
+   */
+  private function key(): ?KeyInterface {
+    return $this->keyId() === '' ? NULL : $this->keyRepository->getKey($this->keyId());
+  }
+
+  /**
+   * The settings config.
+   */
+  private function config(): ImmutableConfig {
+    return $this->configFactory->get('mother_hen_reporter.settings');
   }
 
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Drupal\Tests\mother_hen_reporter\Kernel;
 
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\key\Entity\Key;
 use Drupal\mother_hen_reporter\Reporter;
 use Drupal\mother_hen_reporter\ReporterSettings;
 use Drupal\mother_hen_reporter\Signer;
@@ -26,7 +27,7 @@ final class ReporterTest extends KernelTestBase {
   /**
    * {@inheritdoc}
    */
-  protected static $modules = ['mother_hen_reporter', 'system'];
+  protected static $modules = ['mother_hen_reporter', 'key', 'system'];
 
   /**
    * Requests made through the mocked client.
@@ -43,7 +44,15 @@ final class ReporterTest extends KernelTestBase {
    */
   protected function setUp(): void {
     parent::setUp();
+    $this->installConfig(['mother_hen_reporter']);
     $this->keys = Signer::generateKeyPair();
+    Key::create([
+      'id' => 'mother_hen',
+      'label' => 'Mother Hen private key',
+      'key_type' => 'authentication',
+      'key_provider' => 'config',
+      'key_provider_settings' => ['key_value' => $this->keys['secret']],
+    ])->save();
     putenv('PLATFORM_BRANCH');
   }
 
@@ -56,14 +65,16 @@ final class ReporterTest extends KernelTestBase {
   }
 
   /**
-   * Configures the reporter.
+   * Configures the reporter, with the private key held in a Key entity.
    */
   private function configure(array $overrides = []): void {
-    $this->setSetting('mother_hen_reporter', $overrides + [
+    $this->config('mother_hen_reporter.settings')->setData($overrides + [
       'endpoint' => 'https://dashboard.example/api/mother-hen/inventory',
       'site_id' => '6f1c2b9e-3d4a-4c5b-8e7f-0a1b2c3d4e5f',
-      'private_key' => $this->keys['secret'],
-    ]);
+      'private_key' => 'mother_hen',
+      'environment' => '',
+      'allow_insecure_endpoint' => FALSE,
+    ])->save();
   }
 
   /**
@@ -133,6 +144,20 @@ final class ReporterTest extends KernelTestBase {
     $this->configure(['endpoint' => 'http://dashboard.example/api/mother-hen/inventory']);
     $this->assertNull($this->reporter()->maybeReport(), 'Plain HTTP.');
     $this->assertSame([], $this->history);
+
+    // A key without a value in this environment (e.g. staging, where the
+    // variable is not set) is silent, and says why.
+    Key::create([
+      'id' => 'env_key',
+      'label' => 'From the environment',
+      'key_type' => 'authentication',
+      'key_provider' => 'env',
+      'key_provider_settings' => ['env_variable' => 'MOTHER_HEN_TEST_UNSET'],
+    ])->save();
+    $this->configure(['private_key' => 'env_key']);
+    $reporter = $this->reporter();
+    $this->assertNull($reporter->maybeReport());
+    $this->assertStringContainsString('has no value in this environment', $this->container->get(ReporterSettings::class)->disabledReason());
   }
 
   /**

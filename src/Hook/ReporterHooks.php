@@ -40,7 +40,7 @@ final class ReporterHooks {
     if ($route_name !== 'help.page.mother_hen_reporter') {
       return NULL;
     }
-    return '<p>' . $this->t("Sends this site's installed Drupal core, module and Composer package versions to a Mother Hen security dashboard during cron, signed with this site's private key. Run <code>drush mother-hen:keygen</code> to create keys, add the printed settings to settings.php, and paste the public key into the dashboard. Run <code>drush mother-hen:payload</code> to see exactly what is sent.") . '</p>';
+    return '<p>' . $this->t("Sends this site's installed Drupal core, module and Composer package versions to a Mother Hen security dashboard during cron, signed with this site's private key. Run <code>drush mother-hen:keygen</code> to create a key pair, store the private key with the Key module (preferably from an environment variable), and configure the reporter at Configuration > System > Mother Hen reporter. Run <code>drush mother-hen:payload</code> to see exactly what is sent.") . '</p>';
   }
 
   /**
@@ -48,6 +48,17 @@ final class ReporterHooks {
    */
   #[Hook('runtime_requirements')]
   public function runtimeRequirements(): array {
+    if ($this->settings->hasLegacySettings()) {
+      return [
+        'mother_hen_reporter' => [
+          'title' => $this->t('Mother Hen reporter'),
+          'value' => $this->t('Old settings.php configuration found'),
+          'description' => $this->t('Since version 2.0, the old mother_hen_reporter block in settings.php is ignored. Configure the reporter at Configuration > System > Mother Hen reporter, then remove the block.'),
+          // REQUIREMENT_WARNING / RequirementSeverity::Warning both equal 1.
+          'severity' => 1,
+        ],
+      ];
+    }
     $reason = $this->settings->disabledReason();
     $status = $this->reporter->status();
 

@@ -1,0 +1,7 @@
+mother_hen_reporter.settings:
+  path: '/admin/config/system/mother-hen-reporter'
+  defaults:
+    _form: '\Drupal\mother_hen_reporter\Form\SettingsForm'
+    _title: 'Mother Hen reporter'
+  requirements:
+    _permission: 'administer mother hen reporter'
